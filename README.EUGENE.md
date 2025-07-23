@@ -2,31 +2,78 @@
 
 Training LoRAs on WAN (Video Anything Now) 2.1 1.3B model is highly feasible on RTX 3090 systems, with **proven training times of 2.5 hours for 3500 steps** using small datasets. The RTX 3090's 24GB VRAM provides excellent performance for the 1.3B model, utilizing less than 50% of available memory while delivering professional-quality results.
 
+## Foolproof installation sequence
+
+**Complete setup in order - DO NOT SKIP STEPS:**
+
+```bash
+# Step 1: Clean environment creation
+conda deactivate  # Exit any existing environment
+conda env remove -n diffusion-pipe -y  # Remove if exists
+conda create -n diffusion-pipe python=3.12 -y
+conda activate diffusion-pipe
+
+# Step 2: CUDA toolkit installation
+conda install nvidia::cuda-toolkit=12.4 -y
+
+# Step 3: Environment variables setup
+export CUDA_HOME=$CONDA_PREFIX
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+
+# Step 4: PyTorch installation (exact versions)
+pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --extra-index-url https://download.pytorch.org/whl/cu124
+
+# Step 5: Diffusion-pipe requirements
+cd ~/Desktop/your-path/diffusion-pipe  # Adjust path
+pip install -r requirements.txt
+
+# Step 6: Compatible flash-attn (NOT latest version)
+pip install flash-attn==2.6.3 --no-build-isolation
+
+# Step 7: Verification
+python -c "import torch; import flash_attn; print('✅ All working!')"
+```
+
+**If ANY step fails, start over from Step 1. Do not attempt partial fixes.**
+
 ## Environment setup requirements
 
 **Python version compatibility**
-WAN 2.1 LoRA training requires **Python 3.12 (recommended)**, with Python 3.11 and 3.10 also compatible. Python 3.9 has limited compatibility, while Python 3.8 is not supported.
+⚠️ **CRITICAL:** Use **Python 3.12 ONLY**. Python 3.13+ causes compilation failures, Python 3.11 has package conflicts, and Python 3.10 lacks modern features.
 
 ```bash
-conda create -n diffusion-pipe python=3.12
+# Always create dedicated environment - never use base environment
+conda create -n diffusion-pipe python=3.12 -y
 conda activate diffusion-pipe
 ```
 
 **PyTorch and CUDA requirements**
-The optimal configuration uses **PyTorch 2.4.1-2.6.0 with CUDA 12.4**. This combination ensures compatibility with flash attention and provides optimal performance on RTX 3090.
+Use **PyTorch 2.4.1 with CUDA 12.4** for RTX 3090. Install CUDA toolkit first to avoid compilation issues:
 
 ```bash
-pip install torch==2.4.1 torchvision==0.19.1 torchaudio --extra-index-url https://download.pytorch.org/whl/cu124
+# Install CUDA toolkit for compilation
+conda install nvidia::cuda-toolkit=12.4 -y
+
+# Set up environment variables
+export CUDA_HOME=$CONDA_PREFIX
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+
+# Install exact PyTorch versions
+pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --extra-index-url https://download.pytorch.org/whl/cu124
 ```
 
 **Essential dependencies installation**
-The primary training framework is **diffusion-pipe**, which provides comprehensive WAN 2.1 support with memory optimizations specifically beneficial for RTX 3090 systems.
+Install diffusion-pipe requirements BEFORE flash-attn to avoid version conflicts:
 
 ```bash
 git clone --recurse-submodules https://github.com/tdrussell/diffusion-pipe
 cd diffusion-pipe
 pip install -r requirements.txt
-pip install flash-attn  # Critical for performance
+
+# Install compatible flash-attn version (NOT latest)
+pip install flash-attn==2.6.3 --no-build-isolation
 ```
 
 **RTX 3090-specific environment variables**
@@ -180,15 +227,91 @@ Training duration scales with dataset size: 100 epochs provide quick testing (~5
 **Resource efficiency**
 Training speed averages 2-4 seconds per step, with memory usage remaining well below VRAM capacity. The effective batch size of 4 (1 physical × 4 gradient accumulation steps) provides optimal training stability while maintaining memory efficiency.
 
+## Common installation issues and solutions
+
+**Flash-attn import errors**
+If you encounter `undefined symbol: _ZN3c105ErrorC2ENS_14SourceLocationE` errors:
+
+```bash
+# Remove problematic version
+pip uninstall flash-attn -y
+
+# Install compatible version
+pip install flash-attn==2.6.3 --no-build-isolation
+
+# Verify working installation
+python -c "import torch; import flash_attn; print('✅ PyTorch:', torch.__version__); print('✅ CUDA available:', torch.cuda.is_available()); print('✅ flash-attn working')"
+```
+
+**PyTorch version conflicts**
+If flash-attn installation upgrades PyTorch to 2.7.x causing torchvision/torchaudio conflicts:
+
+```bash
+# Fix version conflicts
+pip uninstall torch torchvision torchaudio flash-attn -y
+pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --extra-index-url https://download.pytorch.org/whl/cu124
+pip install flash-attn==2.6.3 --no-build-isolation
+```
+
+**Python 3.13+ compilation failures**
+If using Python 3.13+ and getting compilation errors, recreate environment:
+
+```bash
+conda deactivate
+conda env remove -n diffusion-pipe -y
+conda create -n diffusion-pipe python=3.12 -y
+conda activate diffusion-pipe
+# Follow installation steps again
+```
+
+**CUDA version mismatches**
+Ensure your driver CUDA version supports the toolkit version:
+
+```bash
+# Check driver version
+nvidia-smi | grep "CUDA Version"
+# Should show 12.4+ for CUDA 12.4 toolkit compatibility
+```
+
 ## Validation and testing procedures
 
-**Quality assessment methodology**
-Validate LoRA quality through multiple checkpoint testing, evaluating outputs at epochs 10, 20, 30 to identify optimal convergence. Target loss values around 0.02xxx indicate successful training, while monitoring the first 300 steps provides early indication of learning rate effectiveness.
+**Environment verification**
+Before training, verify complete setup:
 
-**Testing workflow implementation**
-Deploy trained LoRAs in ComfyUI by copying `.safetensors` files to the models/loras directory. Test generation uses trigger words in prompts, evaluating consistency, style adherence, and motion quality across multiple generations.
+```bash
+# Test all critical components
+python -c "
+import torch
+import flash_attn
+print('✅ PyTorch:', torch.__version__)
+print('✅ CUDA available:', torch.cuda.is_available())
+print('✅ GPU detected:', torch.cuda.get_device_name(0))
+print('✅ flash-attn working')
+print('✅ VRAM available:', torch.cuda.get_device_properties(0).total_memory // 1024**3, 'GB')
+"
+```
 
-**Validation metrics**
-Comprehensive validation includes visual inspection for trigger word response, text-video alignment assessment, and comparison with base model outputs to verify successful style transfer or character representation.
+**Package version compatibility check**
+Ensure no version conflicts:
+
+```bash
+pip list | grep -E "(torch|flash|cuda)" | sort
+# Should show consistent cu124 versions and flash-attn 2.6.3
+```
+
+**Training readiness test**
+Verify diffusion-pipe can load WAN models:
+
+```bash
+python -c "
+import sys
+sys.path.append('.')
+try:
+    from src.models.wan import WanModel
+    print('✅ WAN model loading capability verified')
+except ImportError as e:
+    print('❌ Missing dependencies:', e)
+"
+```
 
 This comprehensive guide provides everything needed to successfully implement WAN 2.1 1.3B LoRA training on Ubuntu with RTX 3090, leveraging proven configurations and optimization techniques for professional-quality results within practical timeframes.
