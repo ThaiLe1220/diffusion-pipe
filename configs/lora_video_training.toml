@@ -1,0 +1,39 @@
+# Video LoRA training configuration for RTX 3090
+output_dir = 'output/mermaid_video_lora'
+dataset = 'configs/dataset_video.toml'
+
+# Video-optimized training parameters
+epochs = 250
+micro_batch_size_per_gpu = 1
+gradient_accumulation_steps = 2
+gradient_clipping = 0.5
+warmup_steps = 100
+
+# Checkpoint and saving settings
+save_every_n_epochs = 50
+activation_checkpointing = true
+save_dtype = 'bfloat16'
+caching_batch_size = 1
+cache_latents = true
+steps_per_print = 1
+
+[model]
+type = 'wan'
+ckpt_path = 'models/wan/Wan2.1-T2V-1.3B'
+transformer_path = 'models/wan/Wan2_1-T2V-1_3B_bf16.safetensors'
+llm_path = 'models/wan/umt5-xxl-enc-fp8_e4m3fn.safetensors'
+vae_path = 'models/wan/Wan2_1_VAE_bf16.safetensors'
+dtype = 'bfloat16'
+timestep_sample_method = 'logit_normal'
+blocks_to_swap = 3
+
+[adapter]
+type = 'lora'
+rank = 32
+dtype = 'bfloat16'
+
+[optimizer]
+type = 'AdamW8bitKahan'
+lr = 3e-5
+betas = [0.9, 0.99]
+weight_decay = 0.02
